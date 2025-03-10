@@ -1,37 +1,89 @@
 import { useEffect, useState } from "react";
+import { Container, Row, Col, Button, Card, Form } from "react-bootstrap";
 
 const Home = () => {
-    const [user, setUser] = useState(null);
+    const [habitaciones, setHabitaciones] = useState([]);
+    const [reservas, setReservas] = useState(() => {
+        return JSON.parse(localStorage.getItem("reservas")) || [];
+    });
+
+    const [fechaEntrada, setFechaEntrada] = useState("");
+    const [fechaSalida, setFechaSalida] = useState("");
 
     useEffect(() => {
-        const fetchUser = async () => {
-            try {
-                const response = await fetch("https://randomuser.me/api/");
-                const data = await response.json();
-                setUser(data.results[0]); // Guardar el usuario aleatorio
-            } catch (error) {
-                console.error("Error al obtener datos de la API:", error);
-            }
+        fetch("http://localhost:8080/api/habitaciones")
+            .then(response => response.json())
+            .then(data => {
+                console.log("📥 Habitaciones recibidas:", data);
+                setHabitaciones(data);
+            })
+            .catch(error => console.error("❌ Error cargando habitaciones:", error));
+    }, []);
+
+    const handleReservar = (habitacion) => {
+        const userEmail = sessionStorage.getItem("email") || localStorage.getItem("email");
+
+        if (!userEmail) {
+            alert("❌ No hay sesión activa. Inicia sesión para reservar.");
+            return;
+        }
+
+        if (!fechaEntrada || !fechaSalida) {
+            alert("📅 Selecciona una fecha de entrada y salida.");
+            return;
+        }
+
+        const nuevaReserva = {
+            id: new Date().getTime(), // ID único en frontend
+            emailUsuario: userEmail,
+            habitacionId: habitacion.id,
+            habitacionNombre: habitacion.nombre,
+            habitacionImagen: habitacion.imagenUrl,
+            precio: habitacion.precio,
+            fechaEntrada,
+            fechaSalida
         };
 
-        fetchUser();
-    }, []); // Se ejecuta solo una vez al montar el componente
+        const nuevasReservas = [...reservas, nuevaReserva];
+        setReservas(nuevasReservas);
+        localStorage.setItem("reservas", JSON.stringify(nuevasReservas));
+
+        alert("✅ Reserva añadida en tus reservas");
+    };
 
     return (
-        <div>
-            <h2>Bienvenido a Hotel Reservas</h2>
-            <p>Disfruta de la mejor experiencia en reservas de hoteles.</p>
+        <Container>
+            <h2 className="text-center mt-4">Habitaciones Disponibles</h2>
 
-            {/* 🔹 Mostrar datos de la API si existen */}
-            {user && (
-                <div>
-                    <h3>🏨 Nuestro huésped del día</h3>
-                    <img src={user.picture.large} alt="Huésped del día" />
-                    <p>Nombre: {user.name.first} {user.name.last}</p>
-                    <p>País: {user.location.country}</p>
-                </div>
-            )}
-        </div>
+            {/* Selector de fechas */}
+            <Row className="mb-3">
+                <Col>
+                    <Form.Label>Fecha de Entrada</Form.Label>
+                    <Form.Control type="date" onChange={(e) => setFechaEntrada(e.target.value)} />
+                </Col>
+                <Col>
+                    <Form.Label>Fecha de Salida</Form.Label>
+                    <Form.Control type="date" onChange={(e) => setFechaSalida(e.target.value)} />
+                </Col>
+            </Row>
+
+            <Row>
+                {habitaciones.map((habitacion) => (
+                    <Col key={habitacion.id} md={4} className="mb-4">
+                        <Card>
+                            <Card.Img variant="top" src={habitacion.imagenUrl} alt={habitacion.nombre} />
+                            <Card.Body>
+                                <Card.Title>{habitacion.nombre}</Card.Title>
+                                <Card.Text>Precio: {habitacion.precio}€</Card.Text>
+                                <Button variant="primary" onClick={() => handleReservar(habitacion)}>
+                                    Reservar
+                                </Button>
+                            </Card.Body>
+                        </Card>
+                    </Col>
+                ))}
+            </Row>
+        </Container>
     );
 };
 

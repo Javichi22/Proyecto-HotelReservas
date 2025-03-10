@@ -1,24 +1,24 @@
 package reservas.proyectohotelreservas.controller;
 
-import jakarta.annotation.security.PermitAll;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import reservas.proyectohotelreservas.dto.ReservaRequest;
+import reservas.proyectohotelreservas.model.Habitacion;
 import reservas.proyectohotelreservas.model.Reserva;
 import reservas.proyectohotelreservas.model.Usuario;
+import reservas.proyectohotelreservas.security.JwtUtil;
+import reservas.proyectohotelreservas.service.HabitacionService;
 import reservas.proyectohotelreservas.service.ReservaService;
 import reservas.proyectohotelreservas.service.UsuarioService;
 
-import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
 
-
 @RestController
 @RequestMapping("/reservas")
-@PreAuthorize("hasAnyRole('ADMIN', 'CLIENTE')")
+@CrossOrigin(origins = "http://localhost:5173")
 public class ReservaController {
 
     @Autowired
@@ -27,56 +27,72 @@ public class ReservaController {
     @Autowired
     private UsuarioService usuarioService;
 
-    // 🔹 Obtener todas las reservas (Solo ADMIN)
-    @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public List<Reserva> getAllReservas() {
-        return reservaService.getAllReservas();
+    @Autowired
+    private HabitacionService habitacionService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+
+    @GetMapping("/todas")
+    public ResponseEntity<List<Reserva>> obtenerTodasLasReservas() {
+        List<Reserva> reservas = reservaService.obtenerTodasLasReservas();
+        return ResponseEntity.ok(reservas);
     }
 
-    // 🔹 Obtener reservas diarias para la página principal
-    @GetMapping("/diarias")
-    public List<Reserva> getReservasDiarias() {
-        return reservaService.getReservasDiarias();
-    }
 
-    // 🔹 Obtener reservas del usuario autenticado (para CLIENTE)
-    @GetMapping("/{email}")
-    @PreAuthorize("hasRole('CLIENTE')")
-    public List<Reserva> getReservasByUser(@PathVariable String email) {
-        return reservaService.getReservasByEmail(email);
-    }
+    // ✅ Hacer una reserva
+    @PostMapping("/reservas")
+    public ResponseEntity<?> realizarReserva(@RequestBody ReservaRequest reservaRequest,
+                                             @RequestHeader("Authorization") String token) {
+        System.out.println("📩 Petición de reserva recibida para usuario: " + reservaRequest.getEmailUsuario());
 
-    @PostMapping
-    @PreAuthorize("hasRole('CLIENTE')")
-    public ResponseEntity<?> createReserva(@RequestBody Reserva reserva, Principal principal) {
-        String emailUsuario = principal.getName(); // Obtiene el email del usuario autenticado
-
-        Optional<Usuario> usuarioOpt = usuarioService.findByEmail(emailUsuario);
-        if (usuarioOpt.isPresent()) {
-            Usuario usuario = usuarioOpt.get();
-            reserva.setUsuario(usuario);
-            reservaService.saveReserva(reserva);
-            return ResponseEntity.ok("Reserva creada exitosamente");
-        } else {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Usuario no encontrado");
+        if (token == null || token.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("⚠️ Token no proporcionado.");
         }
+
+        if (!jwtUtil.validateToken(token.replace("Bearer ", ""))) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("⚠️ Token no válido o expirado.");
+        }
+
+        Optional<Usuario> usuarioOpt = usuarioService.findByEmail(reservaRequest.getEmailUsuario());
+
+        if (usuarioOpt.isEmpty()) {
+            System.out.println("⚠️ Usuario no encontrado: " + reservaRequest.getEmailUsuario());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("⚠️ Usuario no encontrado.");
+        }
+
+        Optional<Habitacion> habitacionOpt = habitacionService.obtenerHabitacionPorId(reservaRequest.getHabitacionId());
+
+        if (habitacionOpt.isEmpty()) {
+            System.out.println("⚠️ Habitación no encontrada: " + reservaRequest.getHabitacionId());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("⚠️ Habitación no encontrada.");
+        }
+
+        Usuario usuario = usuarioOpt.get();
+        Habitacion habitacion = habitacionOpt.get();
+
+        Reserva reserva = new Reserva();
+        reserva.setUsuario(usuario);
+        reserva.setHabitacion(habitacion);
+        reserva.setFechaEntrada(reservaRequest.getFechaEntrada());
+        reserva.setFechaSalida(reservaRequest.getFechaSalida());
+
+        Reserva nuevaReserva = reservaService.guardarReserva(reserva);
+        System.out.println("✅ Reserva guardada con éxito. ID: " + nuevaReserva.getId());
+
+        return ResponseEntity.ok(nuevaReserva);
     }
 
+    // 🔹 Obtener reservas de un usuario autenticado
+    @GetMapping("/usuario/{email}")
+    public ResponseEntity<List<Reserva>> obtenerReservasUsuario(@PathVariable String email) {
+        Optional<Usuario> usuarioOpt = usuarioService.findByEmail(email);
+        if (usuarioOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
+        }
 
-    // 🔹 Editar reserva (para CLIENTE)
-    @PutMapping("/{id}")
-    @PreAuthorize("hasRole('CLIENTE')")
-    public ResponseEntity<?> updateReserva(@PathVariable Long id, @RequestBody Reserva reserva) {
-        reservaService.updateReserva(id, reserva);
-        return ResponseEntity.ok("Reserva actualizada");
-    }
-
-    // 🔹 Eliminar reserva (para CLIENTE y ADMIN)
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CLIENTE')")
-    public ResponseEntity<?> deleteReserva(@PathVariable Long id) {
-        reservaService.deleteReserva(id);
-        return ResponseEntity.ok("Reserva eliminada");
+        List<Reserva> reservas = reservaService.obtenerReservasPorUsuario(usuarioOpt.get());
+        return ResponseEntity.ok(reservas);
     }
 }

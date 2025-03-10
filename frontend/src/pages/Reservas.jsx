@@ -1,77 +1,81 @@
 import { useEffect, useState } from "react";
+import { Container, Row, Col, Card, Button, Alert } from "react-bootstrap";
 
 const Reservas = () => {
-    const [reservas, setReservas] = useState([]);
-    const userEmail = localStorage.getItem("email"); // Obtener el email del usuario autenticado
+    const [reservas, setReservas] = useState(() => {
+        return JSON.parse(localStorage.getItem("reservas")) || [];
+    });
 
-    useEffect(() => {
-        const fetchReservas = async () => {
-            if (!userEmail) {
-                console.error("No se encontró email en localStorage");
-                return;
-            }
+    const handleEliminarReserva = (id) => {
+        const nuevasReservas = reservas.filter(reserva => reserva.id !== id);
+        setReservas(nuevasReservas);
+        localStorage.setItem("reservas", JSON.stringify(nuevasReservas));
+    };
 
-            try {
-                const response = await fetch(`http://localhost:8080/reservas/${userEmail}`, {
-                    headers: {
-                        "Authorization": `Bearer ${localStorage.getItem("token")}`,
-                    },
-                });
+    const handleReservar = async (habitacionId, fechaEntrada, fechaSalida) => {
+        const usuarioEmail = sessionStorage.getItem("email"); // Obtener el usuario autenticado
 
-                if (!response.ok) {
-                    throw new Error(`Error al obtener reservas: ${response.statusText}`);
-                }
+        if (!usuarioEmail) {
+            alert("Debes iniciar sesión para reservar.");
+            return;
+        }
 
-                const data = await response.json();
-                console.log("Reservas obtenidas:", data); // DEBUG: Ver las reservas
-                setReservas(data);
-            } catch (error) {
-                console.error(error);
-            }
+        const nuevaReserva = {
+            emailUsuario: usuarioEmail,
+            habitacionId,
+            fechaEntrada,
+            fechaSalida
         };
 
-        fetchReservas();
-    }, [userEmail]);
+        try {
+            const response = await fetch("http://localhost:8080/reservas/nueva", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(nuevaReserva)
+            });
+
+            if (response.ok) {
+                alert("Reserva realizada con éxito.");
+                window.location.reload(); // Recargar para ver cambios
+            } else {
+                alert("Error al reservar.");
+            }
+        } catch (error) {
+            console.error("Error en la reserva:", error);
+            alert("Error en la conexión.");
+        }
+    };
+
 
     return (
-        <div>
-            <h2>Mis Reservas</h2>
+        <Container>
+            <h2 className="text-center mt-4">Mis Reservas</h2>
             {reservas.length === 0 ? (
-                <p>No tienes reservas registradas.</p>
+                <Alert variant="warning" className="text-center">
+                    No tienes reservas registradas.
+                </Alert>
             ) : (
-                <ul>
+                <Row>
                     {reservas.map((reserva) => (
-                        <li key={reserva.id}>
-                            <p>Habitación: {reserva.habitacion}</p>
-                            <p>Entrada: {reserva.fechaEntrada}</p>
-                            <p>Salida: {reserva.fechaSalida}</p>
-                            <button onClick={() => cancelarReserva(reserva.id)}>Cancelar</button>
-                        </li>
+                        <Col key={reserva.id} md={4} className="mb-3">
+                            <Card>
+                                <Card.Img variant="top" src={reserva.habitacionImagen} alt={reserva.habitacionNombre} />
+                                <Card.Body>
+                                    <Card.Title>{reserva.habitacionNombre}</Card.Title>
+                                    <Card.Text>Precio: {reserva.precio}€</Card.Text>
+                                    <Card.Text>Entrada: {reserva.fechaEntrada}</Card.Text>
+                                    <Card.Text>Salida: {reserva.fechaSalida}</Card.Text>
+                                    <Button variant="danger" onClick={() => handleEliminarReserva(reserva.id)}>
+                                        Cancelar Reserva
+                                    </Button>
+                                </Card.Body>
+                            </Card>
+                        </Col>
                     ))}
-                </ul>
+                </Row>
             )}
-        </div>
+        </Container>
     );
-};
-
-const cancelarReserva = async (id) => {
-    try {
-        const response = await fetch(`http://localhost:8080/reservas/${id}`, {
-            method: "DELETE",
-            headers: {
-                "Authorization": `Bearer ${localStorage.getItem("token")}`,
-            },
-        });
-
-        if (response.ok) {
-            alert("Reserva eliminada correctamente");
-            window.location.reload();
-        } else {
-            alert("Error al eliminar la reserva");
-        }
-    } catch (error) {
-        console.error(error);
-    }
 };
 
 export default Reservas;
